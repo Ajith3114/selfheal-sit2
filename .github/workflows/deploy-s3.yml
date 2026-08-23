@@ -1,0 +1,41 @@
+name: Self-Healing Deploy
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      S3_BUCKET: vignesh-web-2k26
+      S3_KEY: index.html
+      AWS_REGION: ap-south-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Backup current site (for rollback)
+        run: |
+          aws s3 cp "s3://$S3_BUCKET/$S3_KEY" backup.html || echo "no previous version"
+
+      - name: Deploy new version
+        run: |
+          aws s3 cp index.html "s3://$S3_BUCKET/$S3_KEY"
+
+      - name: Health check
+        run: |
+          sleep 5
+          aws s3 cp "s3://$S3_BUCKET/$S3_KEY" check.html
+          if grep -q "SITE-OK" check.html; then
+            echo "Health check PASSED"
+          else
+            echo "Health check FAILED - rolling back!"
+            aws s3 cp backup.html "s3://$S3_BUCKET/$S3_KEY"
+            exit 1
+          fi
