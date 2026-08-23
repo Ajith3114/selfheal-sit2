@@ -1,15 +1,32 @@
 name: Self-Healing Deploy
+
 on:
   push:
     branches: [ master ]
+  workflow_dispatch:
+
+# One deploy at a time. NEVER cancel in progress - a cancelled run
+# could be killed mid-rollback and leave the bad version live.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  S3_BUCKET: vignesh-web-2k26
+  S3_KEY: index.html
+  AWS_REGION: ap-south-1
+  DIST_ID: E1MG8RKBCM89YT
+  SITE_URL: https://d38etqdlxtduo5.cloudfront.net
+  HEALTH_MARKER: SITE-OK
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      S3_BUCKET: vignesh-web-2k26
-      S3_KEY: index.html
-      AWS_REGION: ap-south-1
+    timeout-minutes: 30
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,22 +37,133 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Backup current site (for rollback)
+      # Catch a broken artifact BEFORE it ever reaches production.
+      - name: Pre-flight check
         run: |
-          aws s3 cp "s3://$S3_BUCKET/$S3_KEY" backup.html || echo "no previous version"
+          set -euo pipefail
+          test -f "$S3_KEY"
+          grep -q "$HEALTH_MARKER" "$S3_KEY"
+          echo "Artifact OK ($(wc -c <"$S3_KEY") bytes)"
 
-      - name: Deploy new version
+      # Guard: versioning must be on, or there is nothing to roll back to.
+      - name: Assert bucket versioning is enabled
         run: |
-          aws s3 cp index.html "s3://$S3_BUCKET/$S3_KEY"
-
-      - name: Health check
-        run: |
-          sleep 5
-          aws s3 cp "s3://$S3_BUCKET/$S3_KEY" check.html
-          if grep -q "SITE-OK" check.html; then
-            echo "Health check PASSED"
-          else
-            echo "Health check FAILED - rolling back!"
-            aws s3 cp backup.html "s3://$S3_BUCKET/$S3_KEY"
+          set -euo pipefail
+          STATUS=$(aws s3api get-bucket-versioning --bucket "$S3_BUCKET" \
+                     --query 'Status' --output text)
+          if [ "$STATUS" != "Enabled" ]; then
+            echo "::error::Bucket versioning is '$STATUS' - rollback is impossible. Run: aws s3api put-bucket-versioning --bucket $S3_BUCKET --versioning-configuration Status=Enabled"
             exit 1
           fi
+
+      # Record the last known-good version id BEFORE overwriting it.
+      - name: Record current live version
+        id: current
+        run: |
+          set -euo pipefail
+          VID=$(aws s3api head-object --bucket "$S3_BUCKET" --key "$S3_KEY" \
+                  --query 'VersionId' --output text 2>/dev/null || echo NONE)
+          echo "version_id=$VID" >> "$GITHUB_OUTPUT"
+          echo "Rollback target: $VID"
+
+      - name: Deploy new version
+        id: deploy
+        run: |
+          set -euo pipefail
+          NEW=$(aws s3api put-object \
+                  --bucket "$S3_BUCKET" --key "$S3_KEY" --body "$S3_KEY" \
+                  --content-type "text/html; charset=utf-8" \
+                  --cache-control "no-cache, must-revalidate" \
+                  --query 'VersionId' --output text)
+          echo "version_id=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Deployed version: $NEW"
+
+      - name: Invalidate CDN
+        run: |
+          set -euo pipefail
+          ID=$(aws cloudfront create-invalidation --distribution-id "$DIST_ID" \
+                 --paths "/" "/$S3_KEY" --query 'Invalidation.Id' --output text)
+          aws cloudfront wait invalidation-completed --distribution-id "$DIST_ID" --id "$ID"
+          echo "Invalidation $ID complete"
+
+      # The real check: public HTTPS URL, status code enforced, retried.
+      - name: Health check via CDN
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 6); do
+            CODE=$(curl -fsSL --max-time 30 -o live.html -w '%{http_code}' "$SITE_URL/" || echo 000)
+            if [ "$CODE" = "200" ] && grep -q "$HEALTH_MARKER" live.html; then
+              echo "Health check PASSED on attempt $i (http $CODE)"
+              exit 0
+            fi
+            echo "attempt $i: http=$CODE marker_not_found"
+            sleep 10
+          done
+          echo "::error::Health check FAILED after 6 attempts - rolling back"
+          exit 1
+
+      # ---------- rollback path ----------
+      # Runs only if something failed AFTER we actually wrote to the bucket.
+
+      - name: Roll back to previous version
+        if: failure() && steps.deploy.outputs.version_id != ''
+        run: |
+          set -euo pipefail
+          PREV="${{ steps.current.outputs.version_id }}"
+          if [ "$PREV" = "NONE" ]; then
+            echo "::error::First-ever deploy - no previous version exists. Bad object left live; fix forward."
+            exit 1
+          fi
+          # Copy the good version FORWARD as a new version.
+          # Never delete versions - copy-forward is idempotent and keeps history.
+          RB=$(aws s3api copy-object \
+                 --bucket "$S3_BUCKET" --key "$S3_KEY" \
+                 --copy-source "$S3_BUCKET/$S3_KEY?versionId=$PREV" \
+                 --metadata-directive REPLACE \
+                 --content-type "text/html; charset=utf-8" \
+                 --cache-control "no-cache, must-revalidate" \
+                 --query 'VersionId' --output text)
+          echo "Restored $PREV as new version $RB"
+
+      - name: Invalidate CDN after rollback
+        if: failure() && steps.deploy.outputs.version_id != ''
+        run: |
+          set -euo pipefail
+          ID=$(aws cloudfront create-invalidation --distribution-id "$DIST_ID" \
+                 --paths "/" "/$S3_KEY" --query 'Invalidation.Id' --output text)
+          aws cloudfront wait invalidation-completed --distribution-id "$DIST_ID" --id "$ID"
+
+      - name: Verify the rollback actually serves
+        if: failure() && steps.deploy.outputs.version_id != ''
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 6); do
+            CODE=$(curl -fsSL --max-time 30 -o rb.html -w '%{http_code}' "$SITE_URL/" || echo 000)
+            if [ "$CODE" = "200" ] && grep -q "$HEALTH_MARKER" rb.html; then
+              echo "::warning::Deploy failed, but rollback is verified healthy."
+              exit 0
+            fi
+            echo "rollback attempt $i: http=$CODE"
+            sleep 10
+          done
+          echo "::error::ROLLBACK DID NOT RESTORE A HEALTHY SITE - manual intervention required"
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy summary"
+            echo ""
+            echo "| | version id |"
+            echo "|---|---|"
+            echo "| previous (rollback target) | \`${{ steps.current.outputs.version_id }}\` |"
+            echo "| deployed | \`${{ steps.deploy.outputs.version_id }}\` |"
+            echo ""
+            echo "Manual restore:"
+            echo '```'
+            echo "aws s3api copy-object --bucket $S3_BUCKET --key $S3_KEY \\"
+            echo "  --copy-source '$S3_BUCKET/$S3_KEY?versionId=${{ steps.current.outputs.version_id }}' \\"
+            echo "  --metadata-directive REPLACE --content-type 'text/html; charset=utf-8'"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
