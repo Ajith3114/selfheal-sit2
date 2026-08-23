@@ -1,0 +1,84 @@
+name: 3 - Auto-Fix Agent
+
+# ===== OPTIONAL =====
+# Runs only when workflow 1 (Self-Healing Deploy) FAILS.
+# Rollback already saved the site - this agent tries to fix the CODE.
+# No ANTHROPIC_API_KEY secret? The job skips quietly and stays GREEN.
+# =====================
+
+on:
+  workflow_run:
+    workflows: [ "Self-Healing Deploy" ]
+    types: [ completed ]
+  workflow_dispatch:          # so you can also run it by hand from the Actions tab
+
+# only one agent at a time
+concurrency:
+  group: autofix
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    # manual run, or the deploy actually failed
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # NOTE: no AWS credentials in this job - the agent cannot touch the bucket
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      # Is the agent switched on? (secret present = on)
+      - name: Is auto-fix enabled?
+        id: gate
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Auto-fix agent is ON"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ANTHROPIC_API_KEY not set - auto-fix agent skipped. This step is optional, nothing is broken."
+          fi
+
+      # check out the exact commit that failed, not the branch tip
+      - uses: actions/checkout@v6
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0
+
+      - name: Claude diagnoses and opens a fix PR
+        if: steps.gate.outputs.enabled == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            The deploy workflow "Self-Healing Deploy" just failed and the live site
+            was automatically rolled back to the previous version. Production is safe.
+
+            That workflow uploads index.html to S3, downloads it back, and runs
+            `grep -q "SITE-OK"` on it. A missing marker means the health check failed.
+
+            Your job:
+            1. Read index.html and .github/workflows/deploy-s3.yml.
+            2. Work out exactly why the SITE-OK marker was not found.
+            3. Fix index.html on a new branch.
+            4. Open a pull request explaining the root cause in plain language.
+
+            Rules:
+            - Do NOT modify the rollback logic or any workflow file.
+            - Only fix index.html.
+            - If you cannot find a clear cause, open no PR and explain why instead.
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 15
+            --allowedTools "Read,Edit,Grep,Glob,Bash"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
