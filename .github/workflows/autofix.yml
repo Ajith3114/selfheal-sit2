@@ -59,6 +59,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # No Claude Code GitHub App installed on this repo, so the action
+          # cannot exchange for an app token. Fall back to GITHUB_TOKEN.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             The deploy workflow "Self-Healing Deploy" just failed and the live site
             was automatically rolled back to the previous version. Production is safe.
@@ -66,8 +69,13 @@ jobs:
             That workflow uploads index.html to S3, downloads it back, and runs
             `grep -q "SITE-OK"` on it. A missing marker means the health check failed.
 
+            A bug report is open as issue #1. Read it first with `gh issue view 1`
+            and treat it as the specification of what to fix.
+
             Your job:
-            1. Read index.html and .github/workflows/deploy-s3.yml.
+            1. index.html is ~6.3 MB - do NOT read it whole. Use grep -n to locate
+               the marker, and Read with offset/limit for context. Read
+               .github/workflows/deploy-s3.yml in full.
             2. Work out exactly why the SITE-OK marker was not found.
             3. Fix index.html on a new branch.
             4. Open a pull request explaining the root cause in plain language.
@@ -78,7 +86,7 @@ jobs:
             - If you cannot find a clear cause, open no PR and explain why instead.
           claude_args: |
             --model claude-opus-5
-            --max-turns 15
+            --max-turns 40
             --allowedTools "Read,Edit,Grep,Glob,Bash"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
