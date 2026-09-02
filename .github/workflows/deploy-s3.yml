@@ -1,12 +1,18 @@
 name: Self-Healing Deploy
 
+# What this does, in plain English:
+#   1. Save a copy of the file that is live right now  (the "backup")
+#   2. Upload the new file                              (aws s3 cp)
+#   3. Clear the CDN cache                              (create-invalidation)
+#   4. Open the website and check it                    (curl)
+#   5. If the check fails -> put the backup back        (aws s3 cp)
+
 on:
   push:
     branches: [ master ]
   workflow_dispatch:
 
-# One deploy at a time. NEVER cancel in progress - a cancelled run
-# could be killed mid-rollback and leave the bad version live.
+# Only one deploy at a time, and never kill one halfway through.
 concurrency:
   group: deploy-prod
   cancel-in-progress: false
@@ -15,12 +21,13 @@ permissions:
   contents: read
 
 env:
-  S3_BUCKET: vignesh-web-2k26
-  S3_KEY: index.html
-  AWS_REGION: ap-south-1
-  DIST_ID: E1MG8RKBCM89YT
-  SITE_URL: https://d38etqdlxtduo5.cloudfront.net
-  HEALTH_MARKER: SITE-OK
+  FILE:      index.html                        # the file we deploy
+  BUCKET:    vignesh-web-2k26                  # S3 bucket name
+  BACKUP:    backups/index-previous.html       # where we keep the old copy
+  REGION:    ap-south-1
+  DIST_ID:   E1MG8RKBCM89YT                    # CloudFront distribution
+  SITE_URL:  https://d38etqdlxtduo5.cloudfront.net
+  MARKER:    SITE-OK                           # this word must appear in the page
 
 jobs:
   deploy:
@@ -28,142 +35,87 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # ---------- 0. get the code + AWS login ----------
+
       - uses: actions/checkout@v4
 
-      - name: Configure AWS
+      - name: Log in to AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region:            ${{ env.REGION }}
 
-      # Catch a broken artifact BEFORE it ever reaches production.
-      - name: Pre-flight check
-        run: |
-          set -euo pipefail
-          test -f "$S3_KEY"
-          grep -q "$HEALTH_MARKER" "$S3_KEY"
-          echo "Artifact OK ($(wc -c <"$S3_KEY") bytes)"
+      # ---------- 1. check the file before uploading ----------
 
-      # Guard: versioning must be on, or there is nothing to roll back to.
-      - name: Assert bucket versioning is enabled
+      - name: Check the file looks OK
+        run: grep -q "$MARKER" "$FILE"
+
+      # ---------- 2. save a copy of what is live now ----------
+
+      - name: Save a backup of the live file
+        id: backup
         run: |
-          set -euo pipefail
-          STATUS=$(aws s3api get-bucket-versioning --bucket "$S3_BUCKET" \
-                     --query 'Status' --output text)
-          if [ "$STATUS" != "Enabled" ]; then
-            echo "::error::Bucket versioning is '$STATUS' - rollback is impossible. Run: aws s3api put-bucket-versioning --bucket $S3_BUCKET --versioning-configuration Status=Enabled"
-            exit 1
+          # Copy the live file into a backup folder. If nothing is live yet
+          # (very first deploy) the copy fails, and that is fine.
+          if aws s3 cp "s3://$BUCKET/$FILE" "s3://$BUCKET/$BACKUP"; then
+            echo "have_backup=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing live yet - first deploy, no backup to take."
           fi
 
-      # Record the last known-good version id BEFORE overwriting it.
-      - name: Record current live version
-        id: current
+      # ---------- 3. upload the new file ----------
+
+      - name: Upload to S3
+        run: aws s3 cp "$FILE" "s3://$BUCKET/$FILE" --cache-control no-cache
+
+      # ---------- 4. clear the CDN cache ----------
+
+      - name: Clear CloudFront cache
         run: |
-          set -euo pipefail
-          VID=$(aws s3api head-object --bucket "$S3_BUCKET" --key "$S3_KEY" \
-                  --query 'VersionId' --output text 2>/dev/null || echo NONE)
-          echo "version_id=$VID" >> "$GITHUB_OUTPUT"
-          echo "Rollback target: $VID"
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          sleep 30
 
-      - name: Deploy new version
-        id: deploy
+      # ---------- 5. open the site and check it ----------
+
+      - name: Check the live website
         run: |
-          set -euo pipefail
-          NEW=$(aws s3api put-object \
-                  --bucket "$S3_BUCKET" --key "$S3_KEY" --body "$S3_KEY" \
-                  --content-type "text/html; charset=utf-8" \
-                  --cache-control "no-cache, must-revalidate" \
-                  --query 'VersionId' --output text)
-          echo "version_id=$NEW" >> "$GITHUB_OUTPUT"
-          echo "Deployed version: $NEW"
+          # -f          = fail if the page is not HTTP 200
+          # --retry 5   = curl retries by itself, so we need no loop
+          curl -sf --retry 5 --retry-delay 10 -o page.html "$SITE_URL/"
+          grep -q "$MARKER" page.html
+          echo "Site is healthy."
 
-      - name: Invalidate CDN
+      # ---------- 6. rollback (only if something above failed) ----------
+
+      - name: Put the backup back
+        if: failure() && steps.backup.outputs.have_backup == 'yes'
         run: |
-          set -euo pipefail
-          ID=$(aws cloudfront create-invalidation --distribution-id "$DIST_ID" \
-                 --paths "/" "/$S3_KEY" --query 'Invalidation.Id' --output text)
-          aws cloudfront wait invalidation-completed --distribution-id "$DIST_ID" --id "$ID"
-          echo "Invalidation $ID complete"
+          aws s3 cp "s3://$BUCKET/$BACKUP" "s3://$BUCKET/$FILE" --cache-control no-cache
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          sleep 30
 
-      # The real check: public HTTPS URL, status code enforced, retried.
-      - name: Health check via CDN
+      - name: Check the site again after rollback
+        if: failure() && steps.backup.outputs.have_backup == 'yes'
         run: |
-          set -uo pipefail
-          for i in $(seq 1 6); do
-            CODE=$(curl -fsSL --max-time 30 -o live.html -w '%{http_code}' "$SITE_URL/" || echo 000)
-            if [ "$CODE" = "200" ] && grep -q "$HEALTH_MARKER" live.html; then
-              echo "Health check PASSED on attempt $i (http $CODE)"
-              exit 0
-            fi
-            echo "attempt $i: http=$CODE marker_not_found"
-            sleep 10
-          done
-          echo "::error::Health check FAILED after 6 attempts - rolling back"
-          exit 1
+          curl -sf --retry 5 --retry-delay 10 -o page.html "$SITE_URL/"
+          grep -q "$MARKER" page.html
+          echo "::warning::Deploy failed, but the old version is live and healthy."
 
-      # ---------- rollback path ----------
-      # Runs only if something failed AFTER we actually wrote to the bucket.
+      # ---------- 7. write a little report ----------
 
-      - name: Roll back to previous version
-        if: failure() && steps.deploy.outputs.version_id != ''
-        run: |
-          set -euo pipefail
-          PREV="${{ steps.current.outputs.version_id }}"
-          if [ "$PREV" = "NONE" ]; then
-            echo "::error::First-ever deploy - no previous version exists. Bad object left live; fix forward."
-            exit 1
-          fi
-          # Copy the good version FORWARD as a new version.
-          # Never delete versions - copy-forward is idempotent and keeps history.
-          RB=$(aws s3api copy-object \
-                 --bucket "$S3_BUCKET" --key "$S3_KEY" \
-                 --copy-source "$S3_BUCKET/$S3_KEY?versionId=$PREV" \
-                 --metadata-directive REPLACE \
-                 --content-type "text/html; charset=utf-8" \
-                 --cache-control "no-cache, must-revalidate" \
-                 --query 'VersionId' --output text)
-          echo "Restored $PREV as new version $RB"
-
-      - name: Invalidate CDN after rollback
-        if: failure() && steps.deploy.outputs.version_id != ''
-        run: |
-          set -euo pipefail
-          ID=$(aws cloudfront create-invalidation --distribution-id "$DIST_ID" \
-                 --paths "/" "/$S3_KEY" --query 'Invalidation.Id' --output text)
-          aws cloudfront wait invalidation-completed --distribution-id "$DIST_ID" --id "$ID"
-
-      - name: Verify the rollback actually serves
-        if: failure() && steps.deploy.outputs.version_id != ''
-        run: |
-          set -uo pipefail
-          for i in $(seq 1 6); do
-            CODE=$(curl -fsSL --max-time 30 -o rb.html -w '%{http_code}' "$SITE_URL/" || echo 000)
-            if [ "$CODE" = "200" ] && grep -q "$HEALTH_MARKER" rb.html; then
-              echo "::warning::Deploy failed, but rollback is verified healthy."
-              exit 0
-            fi
-            echo "rollback attempt $i: http=$CODE"
-            sleep 10
-          done
-          echo "::error::ROLLBACK DID NOT RESTORE A HEALTHY SITE - manual intervention required"
-          exit 1
-
-      - name: Summary
+      - name: Report
         if: always()
         run: |
           {
-            echo "### Deploy summary"
+            echo "### Deploy report"
             echo ""
-            echo "| | version id |"
-            echo "|---|---|"
-            echo "| previous (rollback target) | \`${{ steps.current.outputs.version_id }}\` |"
-            echo "| deployed | \`${{ steps.deploy.outputs.version_id }}\` |"
+            echo "- Site: $SITE_URL"
+            echo "- Backup kept at: \`s3://$BUCKET/$BACKUP\`"
             echo ""
-            echo "Manual restore:"
-            echo '```'
-            echo "aws s3api copy-object --bucket $S3_BUCKET --key $S3_KEY \\"
-            echo "  --copy-source '$S3_BUCKET/$S3_KEY?versionId=${{ steps.current.outputs.version_id }}' \\"
-            echo "  --metadata-directive REPLACE --content-type 'text/html; charset=utf-8'"
+            echo "To roll back by hand:"
+            echo '```bash'
+            echo "aws s3 cp s3://$BUCKET/$BACKUP s3://$BUCKET/$FILE --cache-control no-cache"
+            echo "aws cloudfront create-invalidation --distribution-id $DIST_ID --paths '/*'"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

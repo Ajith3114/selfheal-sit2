@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -21,7 +21,7 @@
   --on-screen-muted:#ffffff99; --on-screen-border:#ffffff1a;
   --r:22px; --r2:14px; --r3:10px;
   --sh:0 1px 2px #0f172a0d, 0 12px 32px -20px #0f172a3d;
-  --maxw:1000px; --barw:1200px; --head:61px;
+  --maxw:1160px; --barw:1160px; --head:61px;
   --sans:Geist,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --disp:"Space Grotesk",var(--sans);
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
@@ -80,16 +80,26 @@ h1,h2,h3,h4{font-family:var(--disp);letter-spacing:-.02em;line-height:1.14;text-
 
 /* ---------- your-values bar ---------- */
 .vbar{background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:var(--head);z-index:55}
-.vbar .row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;max-width:var(--barw);margin:0 auto;padding:11px 24px}
+.vbar .row{display:flex;align-items:center;gap:13px;flex-wrap:nowrap;max-width:var(--barw);margin:0 auto;padding:11px 24px}
 .vbar .lbl{font:700 10.5px/1 var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--muted2);flex:none}
-.vfield{display:flex;align-items:center;gap:7px}
-.vfield label{font:600 12px/1 var(--sans);color:var(--muted);white-space:nowrap}
+.vfield{display:flex;align-items:center;gap:7px;flex:1 1 0;min-width:0}
+.vfield label{font:600 12px/1 var(--sans);color:var(--muted);white-space:nowrap;flex:none}
 .vfield input{
   font:500 13px/1 var(--mono);color:var(--text);background:var(--bg);
-  border:1px solid var(--border);border-radius:9px;padding:8px 10px;width:12rem;max-width:44vw
+  border:1px solid var(--border);border-radius:9px;padding:8px 10px;
+  width:100%;min-width:0;flex:1 1 auto
 }
 .vfield input:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
 .v{background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:0 3px;font-weight:600}
+.vbar .mk{margin-left:6px;flex:none;background:var(--accent);color:#fff;border-color:transparent;font-weight:700}
+.vbar .mk:hover{background:var(--accent2);color:#fff}
+
+/* generated script panel */
+.genwrap{max-width:var(--maxw);margin:24px auto 0;padding:0 24px}
+.genhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+.genhead b{font-family:var(--disp);font-size:1.02rem}
+.genhead span{color:var(--muted);font-size:.88rem}
+.genfoot{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
 pre .v{background:#ffffff1f;color:#8fc0ff}
 
 /* ---------- hero ---------- */
@@ -275,11 +285,44 @@ footer a{color:var(--accent)}
   .topbar .row,.vbar .row,.bar-in{padding-inline:14px}
   .brand span{display:none}
   .vbar .lbl{display:none}
-  .vfield input{width:9.5rem}
+  .vbar .row{flex-wrap:wrap}
+  .vfield{flex:1 1 9rem}
   .view{padding:22px 14px 70px}
   .stepcard{padding:16px}
   footer .wrap{padding-inline:14px}
-  pre code{font-size:12.4px}
+
+  /* diagrams: scale down to fit instead of forcing a 430px sideways swipe */
+  .diagram{padding:14px}
+  .diagram svg{min-width:0}
+  .cap{font-size:.82rem;margin-top:10px}
+
+  /* commands: wrap so the whole line is readable without swiping.
+     extra top padding keeps line 1 clear of the Copy button. */
+  pre{padding:38px 13px 15px}
+  pre code{font-size:12.4px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .copybtn{top:8px;right:8px;padding:6px 10px;font-size:11px}
+  .genwrap{padding:0 14px}
+}
+
+/* narrow phones: one column everywhere, nothing squeezed */
+@media (max-width:520px){
+  body{font-size:16px}
+  .view{padding:18px 12px 64px}
+  .stepcard{padding:14px}
+  .journey,.cards,.cols,.learned .grid{grid-template-columns:1fr}
+  .hero{padding:24px 20px}
+  .bigwin{flex-direction:column;align-items:flex-start;gap:12px}
+  .nextnav{flex-direction:column}
+  .navbtn{width:100%}
+  .vbar .row{gap:9px}
+  .vfield{flex:1 1 100%}
+  .vfield input{width:100%;max-width:none}
+  .vbar .mk{margin-left:0;width:100%}
+  .genwrap{padding:0 12px}
+  .genfoot .navbtn{width:100%}
+  .stephead h2{font-size:1.02rem}
+  .topbar .row{gap:10px}
+  footer .wrap{flex-direction:column;gap:6px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto}}
 @media print{.topbar,.vbar,.copybtn,.railwrap,.toast{display:none}}
@@ -298,7 +341,7 @@ footer a{color:var(--accent)}
 
 <div class="vbar" id="vbar" hidden>
   <div class="row">
-    <span class="lbl">Your values</span>
+    <span class="lbl">Enter your details</span>
     <span class="vfield"><label for="i-bucket">Bucket</label>
       <input id="i-bucket" data-fill="bucket" placeholder="yourname-web-2026" autocomplete="off"></span>
     <span class="vfield"><label for="i-region">Region</label>
@@ -307,8 +350,11 @@ footer a{color:var(--accent)}
       <input id="i-distid" data-fill="distid" placeholder="E1ABCD2345XYZ" autocomplete="off"></span>
     <span class="vfield"><label for="i-cdnurl">CDN URL</label>
       <input id="i-cdnurl" data-fill="cdnurl" placeholder="https://d123abc.cloudfront.net" autocomplete="off"></span>
+    <button class="iconbtn mk" id="mkscript" type="button" hidden>&#9889; Create script</button>
   </div>
 </div>
+
+<div class="genwrap" id="genout" hidden></div>
 
 <div class="view" id="view-home">
   <header class="hero">
@@ -435,15 +481,15 @@ footer a{color:var(--accent)}
       <line x1="320" y1="104" x2="428" y2="66" stroke="#2ec4b6" stroke-width="3.5"/><polygon points="428,66 415,67 419,78" fill="#2ec4b6"/>
       <line x1="320" y1="138" x2="428" y2="178" stroke="#2ec4b6" stroke-width="3.5"/><polygon points="428,178 415,177 418,166" fill="#2ec4b6"/>
       <rect x="434" y="36" width="200" height="58" rx="10" fill="#1e2f63" stroke="#5a6da8" stroke-dasharray="5 3"/>
-      <text x="446" y="54" fill="#7f8fc9" font-size="11" font-family="sans-serif">Zone A</text>
+      <text x="446" y="54" fill="#7f8fc9" font-size="12" font-family="sans-serif">Zone A</text>
       <rect x="506" y="44" width="120" height="42" rx="8" fill="#f78c1e"/>
       <text x="566" y="64" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">Server 1</text>
-      <text x="566" y="79" text-anchor="middle" fill="#fff3e0" font-size="10" font-family="sans-serif">EC2 + web</text>
+      <text x="566" y="79" text-anchor="middle" fill="#fff3e0" font-size="11.5" font-family="sans-serif">EC2 + web</text>
       <rect x="434" y="148" width="200" height="58" rx="10" fill="#1e2f63" stroke="#5a6da8" stroke-dasharray="5 3"/>
-      <text x="446" y="166" fill="#7f8fc9" font-size="11" font-family="sans-serif">Zone B</text>
+      <text x="446" y="166" fill="#7f8fc9" font-size="12" font-family="sans-serif">Zone B</text>
       <rect x="506" y="156" width="120" height="42" rx="8" fill="#f78c1e"/>
       <text x="566" y="176" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">Server 2</text>
-      <text x="566" y="191" text-anchor="middle" fill="#fff3e0" font-size="10" font-family="sans-serif">EC2 + web</text>
+      <text x="566" y="191" text-anchor="middle" fill="#fff3e0" font-size="11.5" font-family="sans-serif">EC2 + web</text>
     </svg>
     <div class="cap">One server crashes → the Load Balancer sends everyone to the other → the site stays up.</div>
   </div>
@@ -679,11 +725,11 @@ echo "&lt;h1&gt;Hello from <span class="h">Server 1</span>&lt;/h1&gt;" &gt; /var
       <line x1="70" y1="75" x2="150" y2="75" stroke="#ffd166" stroke-width="3"/><polygon points="150,75 140,69 140,81" fill="#ffd166"/>
       <rect x="158" y="45" width="170" height="60" rx="10" fill="#118ab2"/>
       <text x="243" y="70" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">CloudFront</text>
-      <text x="243" y="88" text-anchor="middle" fill="#d5eefb" font-size="11" font-family="sans-serif">CDN + HTTPS worldwide</text>
+      <text x="243" y="88" text-anchor="middle" fill="#d5eefb" font-size="12" font-family="sans-serif">CDN + HTTPS worldwide</text>
       <line x1="330" y1="75" x2="410" y2="75" stroke="#2ec4b6" stroke-width="3"/><polygon points="410,75 400,69 400,81" fill="#2ec4b6"/>
       <rect x="418" y="45" width="180" height="60" rx="10" fill="#06a77d"/>
       <text x="508" y="70" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">S3 bucket</text>
-      <text x="508" y="88" text-anchor="middle" fill="#d5f5ea" font-size="11" font-family="sans-serif">private — your files</text>
+      <text x="508" y="88" text-anchor="middle" fill="#d5f5ea" font-size="12" font-family="sans-serif">private — your files</text>
     </svg>
     <div class="cap">Users hit CloudFront (fast + HTTPS) → it reads your private S3 files. No server anywhere.</div>
   </div>
@@ -891,16 +937,16 @@ echo "&lt;h1&gt;Hello from <span class="h">Server 1</span>&lt;/h1&gt;" &gt; /var
   <div class="diagram">
     <svg viewBox="0 0 680 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Resume to S3 to Lambda to Bedrock to DynamoDB">
       <rect x="8" y="40" width="70" height="50" rx="6" fill="#ffd166"/>
-      <text x="43" y="68" text-anchor="middle" fill="#16224d" font-size="11" font-weight="bold" font-family="sans-serif">Resume</text>
-      <text x="43" y="82" text-anchor="middle" fill="#16224d" font-size="9" font-family="sans-serif">.txt</text>
+      <text x="43" y="68" text-anchor="middle" fill="#16224d" font-size="12" font-weight="bold" font-family="sans-serif">Resume</text>
+      <text x="43" y="82" text-anchor="middle" fill="#16224d" font-size="11" font-family="sans-serif">.txt</text>
       <line x1="80" y1="65" x2="106" y2="65" stroke="#ffd166" stroke-width="3"/><polygon points="106,65 97,60 97,70" fill="#ffd166"/>
       <rect x="110" y="42" width="80" height="46" rx="8" fill="#06a77d"/><text x="150" y="70" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">S3</text>
       <line x1="192" y1="65" x2="216" y2="65" stroke="#2ec4b6" stroke-width="3"/><polygon points="216,65 207,60 207,70" fill="#2ec4b6"/>
       <rect x="220" y="42" width="96" height="46" rx="8" fill="#f78c1e"/><text x="268" y="70" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold" font-family="sans-serif">Lambda</text>
       <line x1="318" y1="65" x2="342" y2="65" stroke="#f78c1e" stroke-width="3"/><polygon points="342,65 333,60 333,70" fill="#f78c1e"/>
-      <rect x="346" y="38" width="110" height="54" rx="8" fill="#7b5ea7"/><text x="401" y="62" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold" font-family="sans-serif">Bedrock</text><text x="401" y="78" text-anchor="middle" fill="#e6dcf5" font-size="10" font-family="sans-serif">the AI brain</text>
+      <rect x="346" y="38" width="110" height="54" rx="8" fill="#7b5ea7"/><text x="401" y="62" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold" font-family="sans-serif">Bedrock</text><text x="401" y="78" text-anchor="middle" fill="#e6dcf5" font-size="11.5" font-family="sans-serif">the AI brain</text>
       <line x1="458" y1="65" x2="482" y2="65" stroke="#7b5ea7" stroke-width="3"/><polygon points="482,65 473,60 473,70" fill="#7b5ea7"/>
-      <rect x="486" y="42" width="120" height="46" rx="8" fill="#118ab2"/><text x="546" y="63" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold" font-family="sans-serif">DynamoDB</text><text x="546" y="78" text-anchor="middle" fill="#d5eefb" font-size="9" font-family="sans-serif">saves result</text>
+      <rect x="486" y="42" width="120" height="46" rx="8" fill="#118ab2"/><text x="546" y="63" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold" font-family="sans-serif">DynamoDB</text><text x="546" y="78" text-anchor="middle" fill="#d5eefb" font-size="11" font-family="sans-serif">saves result</text>
     </svg>
     <div class="cap">A resume lands in S3 → that wakes Lambda → Lambda asks Bedrock to analyse it → the answer is saved in DynamoDB.</div>
   </div>
@@ -1095,29 +1141,29 @@ Resume:
     <svg viewBox="0 0 660 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Self-healing CI/CD pipeline flow">
       <rect x="20" y="24" width="118" height="48" rx="9" fill="#7b5ea7"/>
       <text x="79" y="44" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">git push</text>
-      <text x="79" y="60" text-anchor="middle" fill="#e6dcf5" font-size="10" font-family="sans-serif">to main</text>
+      <text x="79" y="60" text-anchor="middle" fill="#e6dcf5" font-size="11.5" font-family="sans-serif">to main</text>
       <line x1="138" y1="48" x2="168" y2="48" stroke="#ffd166" stroke-width="3"/><polygon points="168,48 158,43 158,53" fill="#ffd166"/>
       <rect x="170" y="24" width="140" height="48" rx="9" fill="#118ab2"/>
       <text x="240" y="44" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">GitHub Actions</text>
-      <text x="240" y="60" text-anchor="middle" fill="#d5eefb" font-size="10" font-family="sans-serif">pipeline runs</text>
+      <text x="240" y="60" text-anchor="middle" fill="#d5eefb" font-size="11.5" font-family="sans-serif">pipeline runs</text>
       <line x1="240" y1="72" x2="240" y2="100" stroke="#ffd166" stroke-width="3"/><polygon points="240,100 235,90 245,90" fill="#ffd166"/>
       <rect x="170" y="102" width="140" height="48" rx="9" fill="#06a77d"/>
       <text x="240" y="122" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">Backup + deploy</text>
-      <text x="240" y="138" text-anchor="middle" fill="#d5f5ea" font-size="10" font-family="sans-serif">save old, upload to S3</text>
+      <text x="240" y="138" text-anchor="middle" fill="#d5f5ea" font-size="11.5" font-family="sans-serif">save old, upload to S3</text>
       <line x1="240" y1="150" x2="240" y2="178" stroke="#ffd166" stroke-width="3"/><polygon points="240,178 235,168 245,168" fill="#ffd166"/>
       <polygon points="240,182 320,214 240,246 160,214" fill="#f78c1e"/>
       <text x="240" y="210" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold" font-family="sans-serif">Health check</text>
-      <text x="240" y="225" text-anchor="middle" fill="#fff3e0" font-size="10" font-family="sans-serif">SITE-OK?</text>
-      <text x="360" y="200" text-anchor="middle" fill="#06a77d" font-size="11" font-weight="bold" font-family="sans-serif">PASS</text>
+      <text x="240" y="225" text-anchor="middle" fill="#fff3e0" font-size="11.5" font-family="sans-serif">SITE-OK?</text>
+      <text x="360" y="200" text-anchor="middle" fill="#06a77d" font-size="12" font-weight="bold" font-family="sans-serif">PASS</text>
       <line x1="320" y1="214" x2="404" y2="214" stroke="#06a77d" stroke-width="3"/><polygon points="404,214 394,209 394,219" fill="#06a77d"/>
       <rect x="406" y="190" width="140" height="48" rx="9" fill="#2ec4b6"/>
       <text x="476" y="210" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">Deploy to CDN</text>
-      <text x="476" y="226" text-anchor="middle" fill="#d5f5ea" font-size="10" font-family="sans-serif">live on CloudFront</text>
-      <text x="120" y="200" text-anchor="middle" fill="#ef476f" font-size="11" font-weight="bold" font-family="sans-serif">FAIL</text>
+      <text x="476" y="226" text-anchor="middle" fill="#d5f5ea" font-size="11.5" font-family="sans-serif">live on CloudFront</text>
+      <text x="120" y="200" text-anchor="middle" fill="#ef476f" font-size="12" font-weight="bold" font-family="sans-serif">FAIL</text>
       <line x1="160" y1="214" x2="80" y2="214" stroke="#ef476f" stroke-width="3"/><polygon points="80,214 90,209 90,219" fill="#ef476f"/>
       <rect x="10" y="238" width="140" height="48" rx="9" fill="#ef476f"/>
       <text x="80" y="258" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold" font-family="sans-serif">Auto-rollback</text>
-      <text x="80" y="274" text-anchor="middle" fill="#ffd9e2" font-size="10" font-family="sans-serif">restore old version</text>
+      <text x="80" y="274" text-anchor="middle" fill="#ffd9e2" font-size="11.5" font-family="sans-serif">restore old version</text>
       <line x1="80" y1="214" x2="80" y2="236" stroke="#ef476f" stroke-width="3"/><polygon points="80,236 75,226 85,226" fill="#ef476f"/>
     </svg>
     <div class="cap">Push → deploy → health check. Healthy → live on the CDN. Broken → the old version is restored automatically.</div>
@@ -1520,16 +1566,18 @@ jobs:
 
   /* ---------- theme ---------- */
   var root=document.documentElement;
-  function theme(t){root.setAttribute('data-theme',t);localStorage.setItem(LS+'theme',t);
+  function theme(t){root.setAttribute('data-theme',t);localStorage.setItem(LS+'theme2',t);
     document.getElementById('themebtn').textContent=(t==='dark'?'\u2600 Light':'\u263D Dark');}
-  theme(localStorage.getItem(LS+'theme')||
-    (window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'));
+  /* dark is the default; only an explicit user choice overrides it */
+  theme(localStorage.getItem(LS+'theme2')||'dark');
   document.getElementById('themebtn').onclick=function(){
     theme(root.getAttribute('data-theme')==='dark'?'light':'dark');};
 
   /* ---------- values bar: only the fields this project uses ---------- */
   function vbar(id){
     var bar=document.getElementById('vbar'),view=document.getElementById('view-'+id);
+    var mk0=document.getElementById('mkscript');
+    if(mk0) mk0.hidden=!GEN[id];
     if(!view||id==='home'){bar.hidden=true;return;}
     var any=false;
     bar.querySelectorAll('.vfield').forEach(function(f){
@@ -1551,6 +1599,8 @@ jobs:
     document.querySelectorAll('.tab').forEach(function(t){
       t.setAttribute('aria-current',String(t.dataset.go===id));});
     vbar(id);
+    var go=document.getElementById('genout');
+    if(go){go.hidden=true;go.innerHTML='';}
     if(push!==false&&location.hash!=='#/'+id) history.pushState(null,'','#/'+id);
     window.scrollTo(0,0);
     paint();
@@ -1623,6 +1673,69 @@ jobs:
     var s=getSelection();s.removeAllRanges();s.addRange(r);
     say('Selected \u2014 press Ctrl/Cmd+C');
   }
+
+  /* ---------- create script: your values baked into a real file ---------- */
+  var GEN={p2:{file:'deploy.sh',tpl:"#!/usr/bin/env bash\n# deploy.sh - upload your site, clear the CDN cache, prove it is really live.\n# Built from your values on the 6F workshop page.\nset -euo pipefail\n\nBUCKET=\"__BUCKET__\"\nREGION=\"__REGION__\"\nDIST_ID=\"__DISTID__\"\nSITE_URL=\"__CDNURL__\"\nFILE=\"index.html\"\nMARKER=\"SITE-OK\"\n\nexport AWS_DEFAULT_REGION=\"$REGION\"\n\necho \"==> checking $FILE before uploading\"\ntest -f \"$FILE\"\ngrep -q \"$MARKER\" \"$FILE\" || { echo \"ERROR: $MARKER missing from $FILE\"; exit 1; }\n\necho \"==> uploading to s3://$BUCKET/$FILE\"\naws s3api put-object \\\n  --bucket \"$BUCKET\" --key \"$FILE\" --body \"$FILE\" \\\n  --content-type \"text/html; charset=utf-8\" \\\n  --cache-control \"no-cache, must-revalidate\" \\\n  --query 'VersionId' --output text\n\necho \"==> clearing the CloudFront cache\"\nID=$(aws cloudfront create-invalidation --distribution-id \"$DIST_ID\" \\\n       --paths \"/\" \"/$FILE\" --query 'Invalidation.Id' --output text)\naws cloudfront wait invalidation-completed --distribution-id \"$DIST_ID\" --id \"$ID\"\n\necho \"==> checking the live site\"\nfor i in 1 2 3 4 5 6; do\n  CODE=$(curl -fsSL --max-time 30 -o /tmp/live.html -w '%{http_code}' \"$SITE_URL/\" || echo 000)\n  if [ \"$CODE\" = \"200\" ] && grep -q \"$MARKER\" /tmp/live.html; then\n    echo \"LIVE and healthy: $SITE_URL\"\n    exit 0\n  fi\n  echo \"   attempt $i: http=$CODE - waiting\"\n  sleep 10\ndone\n\necho \"FAILED: the site did not come up healthy\"\nexit 1\n"},p4:{file:'deploy.yml',tpl:"name: Self-Healing Deploy\n\non:\n  push:\n    branches: [ master ]\n  workflow_dispatch:\n\n# one deploy at a time; never cancel mid-rollback\nconcurrency:\n  group: deploy-prod\n  cancel-in-progress: false\n\npermissions:\n  contents: read\n\nenv:\n  S3_BUCKET: __BUCKET__\n  S3_KEY: index.html\n  AWS_REGION: __REGION__\n  DIST_ID: __DISTID__\n  SITE_URL: __CDNURL__\n  HEALTH_MARKER: SITE-OK\n\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    timeout-minutes: 30\n    steps:\n      - uses: actions/checkout@v4\n\n      - name: Configure AWS\n        uses: aws-actions/configure-aws-credentials@v4\n        with:\n          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}\n          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}\n          aws-region: ${{ env.AWS_REGION }}\n\n      # catch a broken file BEFORE it reaches production\n      - name: Pre-flight check\n        run: |\n          set -euo pipefail\n          test -f \"$S3_KEY\"\n          grep -q \"$HEALTH_MARKER\" \"$S3_KEY\"\n          echo \"Artifact OK\"\n\n      - name: Assert bucket versioning is enabled\n        run: |\n          set -euo pipefail\n          STATUS=$(aws s3api get-bucket-versioning --bucket \"$S3_BUCKET\" --query 'Status' --output text)\n          if [ \"$STATUS\" != \"Enabled\" ]; then\n            echo \"::error::Versioning is '$STATUS' - rollback is impossible.\"\n            exit 1\n          fi\n\n      # remember the last good version BEFORE overwriting it\n      - name: Record current live version\n        id: current\n        run: |\n          set -euo pipefail\n          VID=$(aws s3api head-object --bucket \"$S3_BUCKET\" --key \"$S3_KEY\" \\\n                  --query 'VersionId' --output text 2>/dev/null || echo NONE)\n          echo \"version_id=$VID\" >> \"$GITHUB_OUTPUT\"\n          echo \"Rollback target: $VID\"\n\n      - name: Deploy new version\n        id: deploy\n        run: |\n          set -euo pipefail\n          NEW=$(aws s3api put-object \\\n                  --bucket \"$S3_BUCKET\" --key \"$S3_KEY\" --body \"$S3_KEY\" \\\n                  --content-type \"text/html; charset=utf-8\" \\\n                  --cache-control \"no-cache, must-revalidate\" \\\n                  --query 'VersionId' --output text)\n          echo \"version_id=$NEW\" >> \"$GITHUB_OUTPUT\"\n\n      - name: Invalidate CDN\n        run: |\n          set -euo pipefail\n          ID=$(aws cloudfront create-invalidation --distribution-id \"$DIST_ID\" \\\n                 --paths \"/\" \"/$S3_KEY\" --query 'Invalidation.Id' --output text)\n          aws cloudfront wait invalidation-completed --distribution-id \"$DIST_ID\" --id \"$ID\"\n\n      # the real check: public HTTPS, status code enforced, retried\n      - name: Health check via CDN\n        run: |\n          set -uo pipefail\n          for i in $(seq 1 6); do\n            CODE=$(curl -fsSL --max-time 30 -o live.html -w '%{http_code}' \"$SITE_URL/\" || echo 000)\n            if [ \"$CODE\" = \"200\" ] && grep -q \"$HEALTH_MARKER\" live.html; then\n              echo \"Health check PASSED (attempt $i)\"\n              exit 0\n            fi\n            echo \"attempt $i: http=$CODE\"\n            sleep 10\n          done\n          echo \"::error::Health check FAILED - rolling back\"\n          exit 1\n\n      # ---------- rollback: copy the last good version forward ----------\n      - name: Roll back\n        if: failure() && steps.deploy.outputs.version_id != ''\n        run: |\n          set -euo pipefail\n          PREV=\"${{ steps.current.outputs.version_id }}\"\n          if [ \"$PREV\" = \"NONE\" ]; then\n            echo \"::error::First deploy - nothing to roll back to.\"\n            exit 1\n          fi\n          aws s3api copy-object \\\n            --bucket \"$S3_BUCKET\" --key \"$S3_KEY\" \\\n            --copy-source \"$S3_BUCKET/$S3_KEY?versionId=$PREV\" \\\n            --metadata-directive REPLACE \\\n            --content-type \"text/html; charset=utf-8\" \\\n            --cache-control \"no-cache, must-revalidate\"\n          echo \"Restored $PREV\"\n\n      - name: Invalidate CDN after rollback\n        if: failure() && steps.deploy.outputs.version_id != ''\n        run: |\n          set -euo pipefail\n          ID=$(aws cloudfront create-invalidation --distribution-id \"$DIST_ID\" \\\n                 --paths \"/\" \"/$S3_KEY\" --query 'Invalidation.Id' --output text)\n          aws cloudfront wait invalidation-completed --distribution-id \"$DIST_ID\" --id \"$ID\"\n\n      - name: Verify the rollback serves\n        if: failure() && steps.deploy.outputs.version_id != ''\n        run: |\n          set -uo pipefail\n          for i in $(seq 1 6); do\n            CODE=$(curl -fsSL --max-time 30 -o rb.html -w '%{http_code}' \"$SITE_URL/\" || echo 000)\n            if [ \"$CODE\" = \"200\" ] && grep -q \"$HEALTH_MARKER\" rb.html; then\n              echo \"::warning::Deploy failed, rollback verified healthy.\"\n              exit 0\n            fi\n            sleep 10\n          done\n          echo \"::error::ROLLBACK FAILED - manual fix needed\"\n          exit 1\n"}};
+  function gvals(){
+    function g(k,d){var e=document.querySelector('input[data-fill="'+k+'"]');
+      var v=e&&e.value.trim();return v||d;}
+    var u=g('cdnurl','https://d123abc.cloudfront.net').replace(/\/+$/,'');
+    if(u&&!/^https?:\/\//.test(u)) u='https://'+u;
+    return {bucket:g('bucket','yourname-web-2026'),region:g('region','ap-south-1'),
+            distid:g('distid','E1ABCD2345XYZ'),cdnurl:u};
+  }
+  function curView(){var h=(location.hash||'').replace('#/','');return h||'home';}
+  function buildScript(){
+    var g=GEN[curView()];
+    if(!g){say('Open Project 2 or Project 4 to build a script');return;}
+    var v=gvals();
+    var body=g.tpl.split('__BUCKET__').join(v.bucket)
+                  .split('__REGION__').join(v.region)
+                  .split('__DISTID__').join(v.distid)
+                  .split('__CDNURL__').join(v.cdnurl);
+    var blank=[];
+    ['bucket','region','distid','cdnurl'].forEach(function(k){
+      var e=document.querySelector('input[data-fill="'+k+'"]');
+      var f=e&&e.closest('.vfield');
+      if(e&&f&&!f.hidden&&!e.value.trim()) blank.push(k);
+    });
+    var out=document.getElementById('genout');
+    out.innerHTML='';
+    var h=document.createElement('div');h.className='genhead';
+    var b=document.createElement('b');b.textContent=g.file;
+    var sp=document.createElement('span');
+    sp.textContent=blank.length?('placeholders used for: '+blank.join(', ')):'built with your values';
+    h.appendChild(b);h.appendChild(sp);
+    var pre=document.createElement('pre');
+    var code=document.createElement('code');code.textContent=body;pre.appendChild(code);
+    var cb=document.createElement('button');
+    cb.className='copybtn';cb.type='button';cb.textContent='Copy';
+    cb.onclick=function(){
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(body).then(function(){
+          cb.textContent='Copied!';say('Copied '+g.file);
+          setTimeout(function(){cb.textContent='Copy';},1500);},function(){sel(code);});
+      } else sel(code);
+    };
+    pre.appendChild(cb);
+    var foot=document.createElement('div');foot.className='genfoot';
+    var dl=document.createElement('button');
+    dl.className='navbtn';dl.type='button';dl.textContent='Download '+g.file;
+    dl.onclick=function(){
+      var bl=new Blob([body],{type:'text/plain;charset=utf-8'});
+      var url=URL.createObjectURL(bl);
+      var a=document.createElement('a');a.href=url;a.download=g.file;
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},1000);
+      say('Downloaded '+g.file);
+    };
+    foot.appendChild(dl);
+    out.appendChild(h);out.appendChild(pre);out.appendChild(foot);
+    out.hidden=false;
+    out.scrollIntoView({behavior:'smooth',block:'start'});
+    say(g.file+' ready');
+  }
+  document.getElementById('mkscript').onclick=buildScript;
 
 
   show((location.hash||'').replace('#/',''),false);
