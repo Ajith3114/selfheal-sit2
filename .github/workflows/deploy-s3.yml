@@ -22,7 +22,7 @@ permissions:
 
 env:
   FILE:      index.html                        # the file we deploy
-  BUCKET:    vignesh-web-2k26                  # S3 bucket name
+  BUCKET:    6f-school-of-it                 # S3 bucket name
   BACKUP:    backups/index-previous.html       # where we keep the old copy
   REGION:    ap-south-1
   DIST_ID:   E1MG8RKBCM89YT                    # CloudFront distribution
