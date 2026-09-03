@@ -6,7 +6,11 @@
 WHAT YOU BUILD
 --------------
 One tiny web page on an EC2 server, and one MySQL database on RDS.
-The page asks the database for rows and prints them.
+The page asks you to sign in, then prints the rows it finds.
+
+Both halves of the page come from the database: the username and
+password it checks are a row, and everything it shows afterwards
+is rows as well.
 
 Then you switch the database off, and watch what happens to the page.
 
@@ -20,7 +24,7 @@ WHY THIS ONE MATTERS FOR SUPPORT WORK
 -------------------------------------
 A ticket arrives saying "the site is broken".
 Very often the site is perfectly fine and the DATABASE is down.
-Telling those two apart is the job. Step 8 shows you the difference
+Telling those two apart is the job. Step 9 shows you the difference
 with your own eyes.
 
 
@@ -151,7 +155,7 @@ and this one server. Nothing else on the internet.
 
 
 ------------------------------------------------------------
- STEP 6 - Create the table and put one row in it
+ STEP 6 - Create the tables and put rows in them
 ------------------------------------------------------------
 Do this from your laptop. Install a MySQL client if you do not have one.
 
@@ -166,15 +170,46 @@ Type your password when asked, then paste this:
 
     CREATE DATABASE workshop;
     USE workshop;
+
     CREATE TABLE messages (
       id   INT AUTO_INCREMENT PRIMARY KEY,
       text VARCHAR(200) NOT NULL
     );
     INSERT INTO messages (text) VALUES ('Hello from RDS');
+
+    CREATE TABLE users (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      username      VARCHAR(50) NOT NULL UNIQUE,
+      password_hash CHAR(64)    NOT NULL
+    );
+    INSERT INTO users (username, password_hash)
+      VALUES ('admin', SHA2('Workshop2026', 256));
+
     SELECT * FROM messages;
+    SELECT id, username FROM users;
     EXIT;
 
-If SELECT shows your row, the database half is finished.
+If both SELECTs show a row, the database half is finished.
+
+WHY THE HASH: the column is called password_hash, not password,
+because the real password is never stored. SHA2('Workshop2026',256)
+turns it into 64 characters that cannot be turned back. When you
+sign in, the page hashes what you typed and compares the two
+hashes. Whoever reads this table later still does not know your
+password.
+
+(SHA2 is used here because you can type it straight at the mysql
+prompt. A real site uses bcrypt - PHP's password_hash() - which is
+deliberately slow so guessing is expensive. index.php accepts
+either one.)
+
+To add another login later, or to change this one:
+
+    INSERT INTO users (username, password_hash)
+      VALUES ('vinoth', SHA2('AnotherPassword', 256));
+
+    UPDATE users SET password_hash = SHA2('NewPassword', 256)
+      WHERE username = 'admin';
 
 
 ------------------------------------------------------------
@@ -201,12 +236,30 @@ Set:
 
 Save (Ctrl+O, Enter, Ctrl+X).
 
+PHP needs somewhere to keep sessions, which is how the page
+remembers you are signed in. The package sets this up already;
+if sign-in never sticks, check that /var/lib/php/session exists
+and is owned by apache:
+
+    sudo chown apache:apache /var/lib/php/session
+
 Open in your browser:
 
     http://EC2-PUBLIC-IP/
 
-You should see "Messages" and the row you inserted, with a green
-"database connected" line.
+You should see a green "database connected" line and a sign-in
+form. Use the row you inserted in step 6:
+
+    username: admin
+    password: Workshop2026
+
+After signing in you get every table in the database printed out -
+messages, and users with its hash column masked. "Sign out" at the
+top right throws the session away.
+
+Note what just happened: the login form has no answers of its own.
+It asked the same database. That is why step 9 breaks the login
+too, not just the data.
 
 
 ------------------------------------------------------------
@@ -219,10 +272,21 @@ Go back to the mysql prompt and add another row:
     INSERT INTO messages (text) VALUES ('I added this without touching the code');
     EXIT;
 
-Reload the browser.
+Reload the browser (sign in again if the session expired).
 
 The new line is there. You did not edit index.php. You did not
 restart anything. You did not deploy.
+
+Try the same trick with a table:
+
+    CREATE TABLE servers (
+      id   INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(50), role VARCHAR(50)
+    );
+    INSERT INTO servers (name, role) VALUES ('workshop-app','web');
+
+Reload. A whole new section appears. The code asks the database
+which tables exist - even the list of tables is data.
 
     THE PAGE IS NOT THE DATA.
     The code decides the SHAPE. The database decides the CONTENT.
@@ -241,6 +305,9 @@ You get:
 
     Cannot reach the database
     The web server is running. The database is not answering.
+
+You do not even get the sign-in form, because the credentials it
+checks live in the database that just went away.
 
 Look carefully at what is still true:
   - EC2 is running. Check it: the page loaded, so httpd answered.
@@ -316,6 +383,20 @@ Page downloads as a file, or you see the PHP code as text
 
 "Unknown database 'workshop'"
   -> You skipped CREATE DATABASE in step 6.
+
+"Wrong username or password" and you are sure it is right
+  -> The hash in the table does not match what you typed. Set it
+     again, exactly as it will be typed (case matters):
+        UPDATE users SET password_hash = SHA2('Workshop2026', 256)
+          WHERE username = 'admin';
+
+"The users table is missing - create it in step 6"
+  -> The CREATE TABLE users block in step 6 did not run.
+
+The sign-in form comes back every time, as if you never logged in
+  -> PHP cannot write its session files:
+        sudo chown apache:apache /var/lib/php/session
+        sudo systemctl restart httpd
 
 "Table 'workshop.messages' doesn't exist"
   -> CREATE TABLE in step 6 did not run. Run it again.
