@@ -22,11 +22,11 @@ permissions:
 
 env:
   FILE:      index.html                        # the file we deploy
-  BUCKET:    6f-school-of-it                 # S3 bucket name
+  BUCKET:    my-bucket-kops-cluster1221                # S3 bucket name
   BACKUP:    backups/index-previous.html       # where we keep the old copy
-  REGION:    ap-south-1
-  DIST_ID:   E1MG8RKBCM89YT                    # CloudFront distribution
-  SITE_URL:  https://d38etqdlxtduo5.cloudfront.net
+  REGION:    us-west-2
+  DIST_ID:   E36UY0XEPO6687                    # CloudFront distribution
+  SITE_URL:  d3kbrxghexdm36.cloudfront.net
   MARKER:    SITE-OK                           # this word must appear in the page
 
 jobs:
