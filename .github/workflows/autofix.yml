@@ -3,7 +3,11 @@ name: 3 - Auto-Fix Agent
 # ===== OPTIONAL =====
 # Runs only when workflow 1 (Self-Healing Deploy) FAILS.
 # Rollback already saved the site - this agent tries to fix the CODE.
-# No ANTHROPIC_API_KEY secret? The job skips quietly and stays GREEN.
+#
+# It runs Claude on AMAZON BEDROCK, so it bills to AWS and needs no
+# Anthropic API key at all.
+#
+# Bedrock secrets not set? The job skips quietly and stays GREEN.
 # =====================
 
 on:
@@ -17,6 +21,16 @@ concurrency:
   group: autofix
   cancel-in-progress: true
 
+env:
+  # The "global." prefix is required. The bare id "anthropic.claude-opus-5"
+  # fails with "on-demand throughput isn't supported".
+  BEDROCK_MODEL:  global.anthropic.claude-opus-5
+  # Must be a region where this account has Bedrock access. Set to match
+  # the deploy region. Verify once with:
+  #   aws bedrock list-inference-profiles --region us-west-2
+  # and look for global.anthropic.claude-opus-5 with status ACTIVE.
+  BEDROCK_REGION: us-west-2
+
 jobs:
   autofix:
     # manual run, or the deploy actually failed
@@ -24,69 +38,104 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # NOTE: no AWS credentials in this job - the agent cannot touch the bucket
+    # NOTE: this job uses the same ADMIN AWS credentials as the deploy.
+    # That means the agent CAN reach S3 and CloudFront, not just Bedrock.
+    # The only thing stopping it is the "do not touch infrastructure" rule
+    # in the prompt below - a soft guardrail, not a hard one.
+    # To make it a hard guardrail again, create an IAM user with only
+    # bedrock:InvokeModel and point the two secrets below at it.
     permissions:
       contents: write
       pull-requests: write
       issues: write
-      id-token: write
       actions: read
 
     steps:
-      # Is the agent switched on? (secret present = on)
+      # Is the agent switched on? (Bedrock secret present = on)
       - name: Is auto-fix enabled?
         id: gate
         env:
-          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
         run: |
           if [ -n "$KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Auto-fix agent is ON"
+            echo "Auto-fix agent is ON (via Bedrock, $BEDROCK_REGION)"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::ANTHROPIC_API_KEY not set - auto-fix agent skipped. This step is optional, nothing is broken."
+            echo "::notice::AWS_ACCESS_KEY_ID not set - auto-fix agent skipped. This step is optional, nothing is broken."
           fi
 
       # check out the exact commit that failed, not the branch tip
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         if: steps.gate.outputs.enabled == 'true'
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
           fetch-depth: 0
 
+      # Same admin credentials as the deploy job. See the note above the
+      # permissions block about what that means for the guardrail.
+      - name: Log in to AWS
+        if: steps.gate.outputs.enabled == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.BEDROCK_REGION }}
+
       - name: Claude diagnoses and opens a fix PR
         if: steps.gate.outputs.enabled == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # No Claude Code GitHub App installed on this repo, so the action
-          # cannot exchange for an app token. Fall back to GITHUB_TOKEN.
+          # No anthropic_api_key. CLAUDE_CODE_USE_BEDROCK below routes the
+          # model calls through Bedrock using the AWS credentials above.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            The deploy workflow "Self-Healing Deploy" just failed and the live site
-            was automatically rolled back to the previous version. Production is safe.
+            The deploy workflow "Self-Healing Deploy" just failed. The pipeline
+            already rolled the live site back, so production is safe. Your job
+            is to fix the CODE that caused it.
 
-            That workflow uploads index.html to S3, downloads it back, and runs
-            `grep -q "SITE-OK"` on it. A missing marker means the health check failed.
+            STEP 1 - find out what actually failed. Do not assume.
+            Run this first and read it carefully:
 
-            A bug report is open as issue #1. Read it first with `gh issue view 1`
-            and treat it as the specification of what to fix.
+              gh run view ${{ github.event.workflow_run.id }} --log-failed
 
-            Your job:
-            1. index.html is ~6.3 MB - do NOT read it whole. Use grep -n to locate
-               the marker, and Read with offset/limit for context. Read
-               .github/workflows/deploy-s3.yml in full.
-            2. Work out exactly why the SITE-OK marker was not found.
-            3. Fix index.html on a new branch.
-            4. Open a pull request explaining the root cause in plain language.
+            The deploy has several steps that can fail for different reasons:
+              - "Check the file looks OK"   -> grep on the local file before upload
+              - "Upload to S3"              -> AWS or permissions problem
+              - "Clear CloudFront cache"    -> CDN or distribution problem
+              - "Check the live website"    -> curl + grep against the live URL
+            Work out which one failed and why, from the log, before touching
+            any file.
+
+            STEP 2 - decide whether it is a code problem at all.
+            Only a failure caused by the contents of index.html is yours to
+            fix. AWS errors, expired credentials, missing distributions and
+            CDN timeouts are infrastructure - those are NOT code bugs. If the
+            cause is infrastructure, open no PR: comment your findings on the
+            failing run's commit instead and stop.
+
+            STEP 3 - if it IS a code problem, fix index.html on a new branch
+            and open a pull request explaining the root cause in plain
+            language, as if to someone learning AWS for the first time.
+
+            Useful context:
+              - index.html is a small page (a few KB). Read it in full.
+              - Read .github/workflows/deploy-s3.yml in full.
+              - The health marker is the string SITE-OK. It must appear
+                EXACTLY ONCE in index.html, or the health check cannot fail
+                and is therefore useless.
 
             Rules:
-            - Do NOT modify the rollback logic or any workflow file.
+            - Do NOT modify any workflow file, or the rollback logic.
             - Only fix index.html.
-            - If you cannot find a clear cause, open no PR and explain why instead.
+            - If you cannot find a clear cause, open no PR and explain why.
           claude_args: |
-            --model claude-opus-5
+            --model ${{ env.BEDROCK_MODEL }}
             --max-turns 40
             --allowedTools "Read,Edit,Grep,Glob,Bash"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ---- this is what sends Claude Code to Bedrock ----
+          CLAUDE_CODE_USE_BEDROCK: 1
+          ANTHROPIC_MODEL: ${{ env.BEDROCK_MODEL }}
+          AWS_REGION: ${{ env.BEDROCK_REGION }}
