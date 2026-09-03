@@ -86,8 +86,10 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          # No anthropic_api_key. CLAUDE_CODE_USE_BEDROCK below routes the
-          # model calls through Bedrock using the AWS credentials above.
+          # This input - not an env var - is what sends the action to Bedrock.
+          # Without it the action demands ANTHROPIC_API_KEY and fails
+          # validation before Claude even starts.
+          use_bedrock: "true"
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             The deploy workflow "Self-Healing Deploy" just failed. The pipeline
@@ -135,7 +137,3 @@ jobs:
             --allowedTools "Read,Edit,Grep,Glob,Bash"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ---- this is what sends Claude Code to Bedrock ----
-          CLAUDE_CODE_USE_BEDROCK: 1
-          ANTHROPIC_MODEL: ${{ env.BEDROCK_MODEL }}
-          AWS_REGION: ${{ env.BEDROCK_REGION }}
