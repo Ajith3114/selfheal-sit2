@@ -1,11 +1,14 @@
 name: Self-Healing Deploy
 
 # What this does, in plain English:
-#   1. Save a copy of the file that is live right now  (the "backup")
-#   2. Upload the new file                              (aws s3 cp)
-#   3. Clear the CDN cache                              (create-invalidation)
-#   4. Open the website and check it                    (curl)
-#   5. If the check fails -> put the backup back        (aws s3 cp)
+#   1. Upload the new file                              (aws s3 cp)
+#   2. Clear the CDN cache and WAIT for it to finish    (create-invalidation)
+#   3. Open the website and check it                    (curl + grep)
+#   4. It passed  -> remember this version as the good one
+#      It failed  -> put the last good version back
+#
+# Note the order: we only save a backup AFTER the check passes, so the
+# backup always means "the last version that actually worked".
 
 on:
   push:
@@ -21,13 +24,13 @@ permissions:
   contents: read
 
 env:
-  FILE:      index.html                        # the file we deploy
-  BUCKET:    my-bucket-kops-cluster1221                # S3 bucket name
-  BACKUP:    backups/index-previous.html       # where we keep the old copy
+  FILE:      index.html                            # the file we deploy
+  BUCKET:    my-bucket-kops-cluster1221            # S3 bucket name
+  BACKUP:    backups/index-previous.html           # the last version that worked
   REGION:    us-west-2
-  DIST_ID:   E36UY0XEPO6687                    # CloudFront distribution
-  SITE_URL:  d3kbrxghexdm36.cloudfront.net
-  MARKER:    SITE-OK                           # this word must appear in the page
+  DIST_ID:   E36UY0XEPO6687                        # CloudFront distribution
+  SITE_URL:  https://d3kbrxghexdm36.cloudfront.net # keep the https:// on this
+  MARKER:    SITE-OK                               # this word must be in the page
 
 jobs:
   deploy:
@@ -35,8 +38,6 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # ---------- 0. get the code + AWS login ----------
-
       - uses: actions/checkout@v4
 
       - name: Log in to AWS
@@ -51,58 +52,68 @@ jobs:
       - name: Check the file looks OK
         run: grep -q "$MARKER" "$FILE"
 
-      # ---------- 2. save a copy of what is live now ----------
-
-      - name: Save a backup of the live file
-        id: backup
-        run: |
-          # Copy the live file into a backup folder. If nothing is live yet
-          # (very first deploy) the copy fails, and that is fine.
-          if aws s3 cp "s3://$BUCKET/$FILE" "s3://$BUCKET/$BACKUP"; then
-            echo "have_backup=yes" >> "$GITHUB_OUTPUT"
-          else
-            echo "Nothing live yet - first deploy, no backup to take."
-          fi
-
-      # ---------- 3. upload the new file ----------
+      # ---------- 2. upload the new file ----------
 
       - name: Upload to S3
         run: aws s3 cp "$FILE" "s3://$BUCKET/$FILE" --cache-control no-cache
 
-      # ---------- 4. clear the CDN cache ----------
+      # ---------- 3. clear the CDN cache, and wait ----------
 
       - name: Clear CloudFront cache
         run: |
-          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
-          sleep 30
+          # Waiting is not optional. A cache clear takes a few minutes, and if
+          # we check the site too early CloudFront serves the OLD page, the
+          # check fails, and a perfectly good deploy gets rolled back.
+          ID=$(aws cloudfront create-invalidation \
+                 --distribution-id "$DIST_ID" --paths "/*" \
+                 --query 'Invalidation.Id' --output text)
+          echo "waiting for invalidation $ID"
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$DIST_ID" --id "$ID"
 
-      # ---------- 5. open the site and check it ----------
+      # ---------- 4. open the site and check it ----------
 
       - name: Check the live website
         run: |
-          # -f          = fail if the page is not HTTP 200
-          # --retry 5   = curl retries by itself, so we need no loop
-          curl -sf --retry 5 --retry-delay 10 -o page.html "$SITE_URL/"
+          # -f  fail if the page is not 200
+          # -L  FOLLOW REDIRECTS. CloudFront answers http:// with a 301 to
+          #     https://, and without -L curl saves the 167-byte redirect
+          #     stub instead of the page. grep then finds nothing and a
+          #     healthy site looks broken.
+          # --retry  curl retries by itself, so we need no loop
+          curl -fsSL --retry 5 --retry-delay 10 -o page.html "$SITE_URL/"
           grep -q "$MARKER" page.html
           echo "Site is healthy."
 
-      # ---------- 6. rollback (only if something above failed) ----------
+      # ---------- 5. it worked, so this becomes the rollback target ----------
 
-      - name: Put the backup back
-        if: failure() && steps.backup.outputs.have_backup == 'yes'
+      - name: Remember this version as the good one
         run: |
-          aws s3 cp "s3://$BUCKET/$BACKUP" "s3://$BUCKET/$FILE" --cache-control no-cache
-          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
-          sleep 30
+          aws s3 cp "s3://$BUCKET/$FILE" "s3://$BUCKET/$BACKUP"
+          echo "Saved as the version to fall back to next time."
 
-      - name: Check the site again after rollback
-        if: failure() && steps.backup.outputs.have_backup == 'yes'
+      # ---------- 6. something failed: put the last good version back ----------
+
+      - name: Put the last good version back
+        if: failure()
         run: |
-          curl -sf --retry 5 --retry-delay 10 -o page.html "$SITE_URL/"
+          if ! aws s3 cp "s3://$BUCKET/$BACKUP" "s3://$BUCKET/$FILE" \
+                 --cache-control no-cache; then
+            echo "::error::No good version has been saved yet, so there is nothing to roll back to. Fix the file and push again."
+            exit 1
+          fi
+
+          ID=$(aws cloudfront create-invalidation \
+                 --distribution-id "$DIST_ID" --paths "/*" \
+                 --query 'Invalidation.Id' --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$DIST_ID" --id "$ID"
+
+          curl -fsSL --retry 5 --retry-delay 10 -o page.html "$SITE_URL/"
           grep -q "$MARKER" page.html
-          echo "::warning::Deploy failed, but the old version is live and healthy."
+          echo "::warning::Deploy failed, but the last good version is back and the site is healthy."
 
-      # ---------- 7. write a little report ----------
+      # ---------- 7. report ----------
 
       - name: Report
         if: always()
@@ -111,7 +122,7 @@ jobs:
             echo "### Deploy report"
             echo ""
             echo "- Site: $SITE_URL"
-            echo "- Backup kept at: \`s3://$BUCKET/$BACKUP\`"
+            echo "- Last good version kept at: \`s3://$BUCKET/$BACKUP\`"
             echo ""
             echo "To roll back by hand:"
             echo '```bash'
