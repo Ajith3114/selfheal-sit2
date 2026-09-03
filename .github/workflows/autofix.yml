@@ -22,13 +22,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The "global." prefix is required. The bare id "anthropic.claude-opus-5"
+  # The "global." prefix is required. The bare id "anthropic.claude-sonnet-5"
   # fails with "on-demand throughput isn't supported".
-  BEDROCK_MODEL:  global.anthropic.claude-opus-5
+  BEDROCK_MODEL:  global.anthropic.claude-sonnet-5
   # Must be a region where this account has Bedrock access. Set to match
   # the deploy region. Verify once with:
   #   aws bedrock list-inference-profiles --region us-west-2
-  # and look for global.anthropic.claude-opus-5 with status ACTIVE.
+  # and look for global.anthropic.claude-sonnet-5 with status ACTIVE.
   BEDROCK_REGION: us-west-2
 
 jobs:

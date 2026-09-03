@@ -50,7 +50,15 @@ jobs:
       # ---------- 1. check the file before uploading ----------
 
       - name: Check the file looks OK
-        run: grep -q "$MARKER" "$FILE"
+        run: |
+          # Four checks, not one grep:
+          #   1. the file is not empty
+          #   2. the marker appears EXACTLY ONCE (not just "at least once")
+          #   3. the page skeleton is there - DOCTYPE, title, </html>
+          #   4. every tag that opens also closes
+          # Run the same thing locally before you push:
+          #   python check-html.py index.html
+          python check-html.py "$FILE"
 
       # ---------- 2. upload the new file ----------
 
@@ -82,8 +90,23 @@ jobs:
           #     healthy site looks broken.
           # --retry  curl retries by itself, so we need no loop
           curl -fsSL --retry 5 --retry-delay 10 -o page.html "$SITE_URL/"
-          grep -q "$MARKER" page.html
-          echo "Site is healthy."
+
+          # The marker must be there exactly once, same rule as before upload.
+          COUNT=$(grep -c "$MARKER" page.html)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::Live page has $COUNT '$MARKER' (expected 1)."
+            exit 1
+          fi
+
+          # And it must be a real page, not a 167-byte redirect stub or an
+          # error page that happens to contain the marker.
+          BYTES=$(wc -c < page.html)
+          if [ "$BYTES" -lt 1000 ]; then
+            echo "::error::Live page is only $BYTES bytes - too small to be the real page."
+            exit 1
+          fi
+
+          echo "Site is healthy ($BYTES bytes, $COUNT marker)."
 
       # ---------- 5. it worked, so this becomes the rollback target ----------
 
