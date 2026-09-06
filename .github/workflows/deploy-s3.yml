@@ -14,11 +14,11 @@ permissions:
 
 env:
   FILE:     index.html
-  BUCKET:   my-bucket-kops-cluster1221
+  BUCKET:   6f-cloudfront-session 
   BACKUP:   backups/index-previous.html
-  REGION:   us-west-2
-  DIST_ID:  E36UY0XEPO6687
-  SITE_URL: https://d3kbrxghexdm36.cloudfront.net
+  REGION:   us-east-1
+  DIST_ID:  E2I68F2HP7AYTU
+  SITE_URL: https://d1xf9ibvr1eeig.cloudfront.net/index.html
   MARKER:   SITE-OK
 
 jobs:
