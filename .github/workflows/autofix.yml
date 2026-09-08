@@ -1,7 +1,13 @@
 name: 3 - Auto-Fix Agent
 
 # Optional. Runs only when Self-Healing Deploy fails.
-# Uses Claude on Bedrock, so no Anthropic API key is needed.
+#
+# Uses a model on Amazon Bedrock through the Converse API, so the only
+# credentials involved are the AWS ones already in this repo's secrets.
+# No Anthropic account, no OpenAI account, no API key of any kind.
+#
+# The model choice is just the BEDROCK_MODEL_ID below. Any Bedrock model that
+# supports Converse will work; swapping vendors is a one-line change.
 
 on:
   workflow_run:
@@ -14,9 +20,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The "global." prefix is required, the bare model id is rejected.
-  BEDROCK_MODEL:  global.anthropic.claude-sonnet-5
-  BEDROCK_REGION: us-west-2
+  # On bedrock-runtime this model has NO in-Region inference, so the ID must
+  # name a cross-Region inference profile. "us." is the geo profile, and
+  # "global." also works. A bare "openai.gpt-5.6-luna" is rejected.
+  BEDROCK_MODEL_ID: us.openai.gpt-5.6-luna
+  BEDROCK_REGION:   us-west-2
 
 jobs:
   autofix:
@@ -27,7 +35,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      issues: write
       actions: read
 
     steps:
@@ -43,42 +50,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.BEDROCK_REGION }}
 
-      - name: Claude diagnoses and opens a fix PR
-        uses: anthropics/claude-code-action@v1
-        with:
-          use_bedrock: "true"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: |
-            The deploy workflow "Self-Healing Deploy" just failed. The site was
-            already rolled back, so production is safe. Fix the code that caused it.
+      - name: Install the AWS SDK
+        run: pip install --quiet boto3
 
-            1. Read the real error first, do not assume:
-                 gh run view ${{ github.event.workflow_run.id }} --log-failed
-
-            2. Decide if it is a code problem. Only the contents of index.html
-               are yours to fix. AWS errors, expired credentials and CDN
-               timeouts are infrastructure - for those, open no PR and just
-               report what you found.
-
-            3. If it is a code problem, fix index.html on a new branch. Then
-               prove it by running the same check the pipeline runs:
-                 python check-html.py index.html
-               It must print OK. Do not open a PR while it still prints FAIL.
-
-            4. Open a pull request explaining the cause in plain language, for
-               someone learning AWS for the first time. Paste the passing
-               check-html.py output into the PR body.
-
-            Read check-html.py - it is short, and it defines what "valid" means
-            here. index.html is only a few KB, so read it in full.
-
-            Rules:
-            - Do not modify any workflow file or the rollback logic.
-            - Only fix index.html.
-            - If the cause is not clear, open no PR and explain why.
-          claude_args: |
-            --model ${{ env.BEDROCK_MODEL }}
-            --max-turns 40
-            --allowedTools "Read,Edit,Grep,Glob,Bash"
+      - name: Diagnose the failure and open a fix PR
+        run: python .github/scripts/autofix.py
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEDROCK_MODEL_ID: ${{ env.BEDROCK_MODEL_ID }}
+          BEDROCK_REGION:   ${{ env.BEDROCK_REGION }}
+          RUN_ID:           ${{ github.event.workflow_run.id }}
+          TARGET_FILE:      index.html
+          CHECKER:          check-html.py
+          BASE_BRANCH:      master
+          GH_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
