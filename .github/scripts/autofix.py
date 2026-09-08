@@ -26,7 +26,7 @@ import sys
 import boto3
 from botocore.exceptions import ClientError
 
-# ---- settings, all overridable from the workflow ----
+# ---- settings, all77 overridable from the workflow ----
 MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.openai.gpt-5.6-luna")
 REGION = os.environ.get("BEDROCK_REGION", "us-west-2")
 RUN_ID = os.environ.get("RUN_ID", "")
