@@ -24,6 +24,7 @@ import subprocess
 import sys
 
 import boto3
+import botocore
 from botocore.exceptions import ClientError
 
 # ---- settings, all77 overridable from the workflow ----
@@ -96,6 +97,21 @@ Rules:
 <<<END_FILE>>>"""
 
 
+def bedrock_client():
+    """One place to build the client, and one place to catch a stale SDK.
+
+    converse() arrived in botocore 1.34.116. An older copy -- the apt-packaged
+    one at /usr/lib/python3/dist-packages, typically -- raises a bare
+    AttributeError from deep inside botocore, which reads like a bug in this
+    script rather than an SDK that is simply too old. Say it plainly instead.
+    """
+    client = boto3.client("bedrock-runtime", region_name=REGION)
+    if not hasattr(client, "converse"):
+        sys.exit("botocore " + botocore.__version__ + " has no Converse API. "
+                 "Install boto3 1.34.116 or newer: pip install -U boto3")
+    return client
+
+
 def ask_the_model(log, checker_src, current, complaint=None):
     """One Converse call. One answer. No tools, no agent loop."""
     parts = [
@@ -119,8 +135,7 @@ def ask_the_model(log, checker_src, current, complaint=None):
             "Read that complaint carefully and fix it properly this time.",
         ]
 
-    client = boto3.client("bedrock-runtime", region_name=REGION)
-    resp = client.converse(
+    resp = bedrock_client().converse(
         modelId=MODEL_ID,
         system=[{"text": SYSTEM}],
         messages=[{"role": "user", "content": [{"text": "\n".join(parts)}]}],
