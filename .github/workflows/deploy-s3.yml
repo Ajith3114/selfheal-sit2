@@ -11,14 +11,14 @@ concurrency:
 
 permissions:
   contents: read
-
+#dj
 env:
   FILE:     index.html
-  BUCKET:   6f-cloudfront-session 
+  BUCKET:   6f-webinar-demo-0809 
   BACKUP:   backups/index-previous.html
   REGION:   us-east-1
-  DIST_ID:  E2I68F2HP7AYTU
-  SITE_URL: https://d1xf9ibvr1eeig.cloudfront.net/index.html
+  DIST_ID:  E2TL4YYNMDPBVK
+  SITE_URL: https://dg1pw5j6d45t0.cloudfront.net/
   MARKER:   SITE-OK
 
 jobs:
