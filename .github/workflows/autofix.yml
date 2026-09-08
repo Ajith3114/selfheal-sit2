@@ -15,7 +15,7 @@ concurrency:
 
 env:
   # The "global." prefix is required, the bare model id is rejected.
-  BEDROCK_MODEL:  amazon.nova-2-sonic-v1:0
+  BEDROCK_MODEL:  global.anthropic.claude-sonnet-5
   BEDROCK_REGION: us-west-2
 
 jobs:
