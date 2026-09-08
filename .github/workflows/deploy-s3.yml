@@ -11,7 +11,7 @@ concurrency:
 
 permissions:
   contents: read
-
+#dj
 env:
   FILE:     index.html
   BUCKET:   6f-webinar-demo-0809 
