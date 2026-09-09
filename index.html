@@ -17,7 +17,7 @@
      name is written with an HTML entity (SITE&#45;OK) so that it
      LOOKS the same in the browser but does NOT match the grep.
      =================================================================== -->
-<!-- SITE-K -->
+<!-- SITE-OK -->
 
 <style>
   :root {
@@ -145,7 +145,7 @@ grep -q "SITE&#45;OK" page.html</code></pre>
        <em>anywhere</em> in the file &mdash; including inside ordinary
        sentences. If the name were spelled out normally in the text above,
        deleting the real marker would still leave matches behind, and the
-       health check could never fail.
+       health check could never fail.</p>
     <p>So every mention on this page except the real marker is written as
        <code>SITE&amp;#45;OK</code>. The browser shows a normal hyphen;
        <code>grep</code> sees something different. That keeps exactly
